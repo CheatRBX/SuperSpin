@@ -2,50 +2,79 @@ package org.firstinspires.ftc.teamcode;
 
 import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
 import com.qualcomm.robotcore.eventloop.opmode.TeleOp;
-import com.qualcomm.robotcore.hardware.DcMotor;
 
+/**
+ * Gamepad1 (водитель):
+ *   левый стик — езда, правый стик X — поворот, RT — медленно,
+ *   RB (держать) — автонаведение + автовыстрел (стой на месте),
+ *   LB (держать) — то же + робот сам подъезжает на рабочую дистанцию,
+ *   BACK — field/robot-centric, START — сброс IMU.
+ * Gamepad2 (оператор):
+ *   RT — интейк внутрь, LT — наружу, Y — предраскрутка вкл/выкл, B — маховик стоп,
+ *   X — ручной выстрел, D-pad вверх/вниз — поправка оборотов ±50,
+ *   A (держать) — запасной выстрел без камеры по дистанции 54".
+ * Init: X — синий альянс, B — красный.
+ */
 @TeleOp(name = "BioBuzz TeleOp")
 public class MainTeleOp extends LinearOpMode {
     @Override public void runOpMode() {
         Robot r = new Robot(hardwareMap);
-        boolean field = true, clawOpen = false, lastA = false, lastBack = false;
-        telemetry.addLine("Готов"); telemetry.update();
-        waitForStart();
+        boolean field = true, prespin = true;
+        boolean lastBack = false, lastY = false, lastUp = false, lastDown = false;
+
+        while (opModeInInit()) {
+            if (gamepad1.x || gamepad2.x) Robot.alliance = Robot.Alliance.BLUE;
+            if (gamepad1.b || gamepad2.b) Robot.alliance = Robot.Alliance.RED;
+            Vision.Target t = r.vision.update(Robot.alliance);
+            telemetry.addData("Альянс (X синий / B красный)", Robot.alliance);
+            telemetry.addData("HIVE видно", t == null ? "нет" : String.format("%.0f\"", t.distance));
+            telemetry.update();
+        }
 
         while (opModeIsActive()) {
-            // --- Gamepad1: шасси ---
-            double slow = gamepad1.right_trigger > 0.3 ? 0.35 : 1.0;
+            // --- переключатели ---
             if (gamepad1.back && !lastBack) field = !field;
             lastBack = gamepad1.back;
             if (gamepad1.start) r.imu.resetYaw();
-            r.drive(-gamepad1.left_stick_y * slow, gamepad1.left_stick_x * slow,
-                    gamepad1.right_stick_x * slow, field);
+            if (gamepad2.y && !lastY) prespin = !prespin;
+            lastY = gamepad2.y;
+            if (gamepad2.dpad_up && !lastUp) Shooter.rpmTrim += 50;
+            if (gamepad2.dpad_down && !lastDown) Shooter.rpmTrim -= 50;
+            lastUp = gamepad2.dpad_up;
+            lastDown = gamepad2.dpad_down;
 
-            // --- Gamepad2: механизмы ---
-            r.intake.setPower(gamepad2.right_trigger - gamepad2.left_trigger);
+            double slow = gamepad1.right_trigger > 0.3 ? 0.35 : 1.0;
+            double y = -gamepad1.left_stick_y * slow, x = gamepad1.left_stick_x * slow;
+            boolean ready = false;
+            boolean aiming = gamepad1.right_bumper || gamepad1.left_bumper;
 
-            if (gamepad2.a && !lastA) clawOpen = !clawOpen;
-            lastA = gamepad2.a;
-            r.claw.setPosition(clawOpen ? Robot.CLAW_OPEN : Robot.CLAW_CLOSED);
-
-            if (gamepad2.dpad_down) r.liftTo(Robot.LIFT_MIN, 1);
-            else if (gamepad2.dpad_left) r.liftTo(1200, 1);
-            else if (gamepad2.dpad_up) r.liftTo(Robot.LIFT_MAX, 1);
-            else if (Math.abs(gamepad2.left_stick_y) > 0.1) {
-                int pos = r.lift.getCurrentPosition();
-                double p = -gamepad2.left_stick_y;
-                if ((pos <= Robot.LIFT_MIN && p < 0) || (pos >= Robot.LIFT_MAX && p > 0)) p = 0;
-                r.lift.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
-                r.lift.setPower(p);
-            } else if (r.lift.getMode() != DcMotor.RunMode.RUN_TO_POSITION) {
-                r.liftTo(r.lift.getCurrentPosition(), 0.5); // удержание
+            if (aiming) {
+                ready = r.aimStep(y, x, gamepad1.left_bumper, 0);
+                if (ready) r.shooter.fire();
+            } else {
+                r.drive(y, x, gamepad1.right_stick_x * slow, field);
+                if (gamepad2.a) r.shooter.setDistance(54);
+                else if (gamepad2.b) r.shooter.stop();
+                else if (prespin) r.shooter.idle();
+                else r.shooter.stop();
             }
 
-            telemetry.addData("Field-centric", field);
-            telemetry.addData("Heading°", Math.toDegrees(r.heading()));
-            telemetry.addData("Lift", r.lift.getCurrentPosition());
-            telemetry.addData("Claw", clawOpen ? "open" : "closed");
+            if (gamepad2.x) r.shooter.fire(); // ручной выстрел
+            r.intake.setPower(gamepad2.right_trigger - gamepad2.left_trigger);
+            r.shooter.update();
+
+            Vision.Target t = r.vision.update(Robot.alliance);
+            telemetry.addData("Альянс", Robot.alliance);
+            telemetry.addData("Режим", aiming ? (ready ? "ОГОНЬ" : "наведение") : (field ? "field-centric" : "robot-centric"));
+            telemetry.addData("Цель", t == null ? "не видно" :
+                    String.format("%s %.0f\" bearing %.1f° (%d%%)", t.name, t.distance, t.bearing, t.percentFound));
+            telemetry.addData("Ошибка / допуск", "%.1f° / %.1f°", r.lastAimError, r.lastAimTolerance);
+            telemetry.addData("RPM цель / L / R", "%.0f / %.0f / %.0f",
+                    r.shooter.targetRpm(), r.shooter.rpmLeft(), r.shooter.rpmRight());
+            telemetry.addData("Поправка RPM", Shooter.rpmTrim);
             telemetry.update();
         }
+        r.stopAll();
+        r.vision.close();
     }
 }
