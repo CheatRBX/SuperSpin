@@ -5,48 +5,48 @@ import com.qualcomm.robotcore.eventloop.opmode.TeleOp;
 
 /**
  * Калибровка таблицы выстрела — главное для точности.
- * Поставьте робота на дистанцию, подберите RPM и капюшон, чтобы 5 из 5 попадали в центр ячейки,
- * перепишите строку с экрана в таблицу Shooter.java. Повторите для 6–7 дистанций.
+ * 1) Поставьте робота на дистанцию.  2) LB — навестись.  3) Подберите RPM и капюшон,
+ * чтобы 5 из 5 шаров попадали в центр ячейки.  4) Перепишите «СТРОКА ТАБЛИЦЫ» в Config.
+ * Повторите для 6–7 дистанций от MIN_RANGE_IN до MAX_RANGE_IN.
  *
- * LB (держать) — навестись на цель, A — выстрел,
- * D-pad вверх/вниз — RPM ±50, вправо/влево — капюшон ±0.01, RT/LT — интейк.
+ * Gamepad1: LB (держать) — навестись, A — выстрел, D-pad ↑/↓ — RPM ±50, →/← — капюшон ±0.01,
+ *           RT/LT — интейк, стики — медленная езда. Init: X — синий, B — красный.
  */
 @TeleOp(name = "Shooter Tuner", group = "tune")
 public class ShooterTuner extends LinearOpMode {
     @Override public void runOpMode() {
-        Robot r = new Robot(hardwareMap);
+        Robot r = new Robot(hardwareMap, new Pose(0, 0, 0));
         double rpm = 3000, hood = 0.35;
-        boolean lu = false, ld = false, ll = false, lr = false, la = false;
-        waitForStart();
+
+        while (opModeInInit()) {
+            r.update();
+            if (gamepad1.x) Robot.alliance = Robot.Alliance.BLUE;
+            if (gamepad1.b) Robot.alliance = Robot.Alliance.RED;
+            r.addTelemetry(telemetry);
+            telemetry.update();
+        }
 
         while (opModeIsActive()) {
-            if (gamepad1.dpad_up && !lu) rpm += 50;
-            if (gamepad1.dpad_down && !ld) rpm -= 50;
-            if (gamepad1.dpad_right && !lr) hood = Math.min(1, hood + 0.01);
-            if (gamepad1.dpad_left && !ll) hood = Math.max(0, hood - 0.01);
-            if (gamepad1.a && !la) r.shooter.fire();
-            lu = gamepad1.dpad_up; ld = gamepad1.dpad_down;
-            ll = gamepad1.dpad_left; lr = gamepad1.dpad_right; la = gamepad1.a;
+            r.update();
+            if (gamepad1.dpadUpWasPressed()) rpm += 50;
+            if (gamepad1.dpadDownWasPressed()) rpm = Math.max(0, rpm - 50);
+            if (gamepad1.dpadRightWasPressed()) hood = Math.min(1, hood + 0.01);
+            if (gamepad1.dpadLeftWasPressed()) hood = Math.max(0, hood - 0.01);
+            if (gamepad1.aWasPressed()) r.shooter.fire();
 
-            Vision.Target t = r.vision.update(Robot.alliance);
-            if (gamepad1.left_bumper && t != null) {
-                double turn = Math.max(-0.3, Math.min(0.3, -(t.bearing - Robot.AIM_OFFSET_DEG) * Robot.AIM_KP));
-                r.drive(0, 0, turn, false);
-            } else {
-                r.drive(-gamepad1.left_stick_y * 0.4, gamepad1.left_stick_x * 0.4, gamepad1.right_stick_x * 0.4, false);
-            }
+            if (gamepad1.left_bumper) r.aim(0, 0, false, 0, false);
+            else r.drive(-gamepad1.left_stick_y * 0.4, gamepad1.left_stick_x * 0.4, gamepad1.right_stick_x * 0.4, false);
+
             r.shooter.spin(rpm);
             r.shooter.hood.setPosition(hood);
-            r.shooter.update();
-            r.intake.setPower(gamepad1.right_trigger - gamepad1.left_trigger);
+            r.intake(gamepad1.right_trigger - gamepad1.left_trigger);
 
-            telemetry.addData("Альянс", Robot.alliance);
-            telemetry.addData("Дистанция", t == null ? "цель не видно" : String.format("%.1f\"", t.distance));
-            telemetry.addData("Bearing", t == null ? "-" : String.format("%.1f°", t.bearing));
-            telemetry.addData("RPM цель / L / R", "%.0f / %.0f / %.0f", rpm, r.shooter.rpmLeft(), r.shooter.rpmRight());
+            Vision.Target t = r.target();
+            telemetry.addData("RPM / капюшон", "%.0f / %.2f", rpm, hood);
             telemetry.addData("На скорости", r.shooter.atSpeed());
-            telemetry.addData("Капюшон", "%.2f", hood);
-            telemetry.addLine(t == null ? "" : String.format("СТРОКА ТАБЛИЦЫ: %.0f, %.0f, %.2f", t.distance, rpm, hood));
+            telemetry.addLine(t == null ? "СТРОКА ТАБЛИЦЫ: цель не видно"
+                    : String.format("СТРОКА ТАБЛИЦЫ:  DIST %.0f   RPM %.0f   HOOD %.2f", t.distance, rpm, hood));
+            r.addTelemetry(telemetry);
             telemetry.update();
         }
         r.stopAll();

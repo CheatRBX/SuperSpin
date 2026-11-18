@@ -12,48 +12,46 @@ import org.firstinspires.ftc.vision.apriltag.AprilTagPoseFtc;
 import org.firstinspires.ftc.vision.apriltag.AprilTagProcessor;
 
 /**
- * Камера видит группы AprilTag под ячейками HIVE (Competition Manual 9.9, ID 30–45).
- * Используется официальная библиотека SDK 12 — getBioBuzzTagLibrary(): там 4 группы
+ * Группы AprilTag под ячейками HIVE (Competition Manual 9.9, ID 30–45).
+ * Официальная библиотека SDK 12 getBioBuzzTagLibrary(): группы
  * "RED SCORING", "RED AUDIENCE", "BLUE AUDIENCE", "BLUE SCORING".
- * SDK решает положение по всей группе сразу (до 16 углов) — это точнее одной метки.
+ * SDK решает положение по всей группе сразу — точнее, чем по одной метке.
  */
 public class Vision {
     public enum Preference { NEAREST, SCORING, AUDIENCE }
 
-    /** Какую ячейку своего альянса выбирать. Проверьте на поле, какая видна с точки выстрела. */
-    public static Preference target = Preference.NEAREST;
-    public static double SMOOTH = 0.5;     // 0..1: больше — быстрее реакция, меньше — меньше дрожь
-    public static long MAX_AGE_MS = 250;   // сколько верить последнему кадру
-
     public static class Target {
         public final String name;
-        public final double distance, bearing;
+        public final double distance, bearing;  // дюймы по горизонтали; градусы, влево +
         public final int percentFound;
-        Target(String name, double distance, double bearing, int percentFound) {
-            this.name = name; this.distance = distance;
-            this.bearing = bearing; this.percentFound = percentFound;
+        public final long frameNs;               // время снимка (System.nanoTime)
+        public final boolean fresh;              // новый кадр с прошлого вызова
+        Target(String name, double distance, double bearing, int percentFound, long frameNs, boolean fresh) {
+            this.name = name; this.distance = distance; this.bearing = bearing;
+            this.percentFound = percentFound; this.frameNs = frameNs; this.fresh = fresh;
         }
+        Target stale() { return new Target(name, distance, bearing, percentFound, frameNs, false); }
     }
 
     private final AprilTagProcessor tags;
     private final VisionPortal portal;
     private Target last = null;
-    private long lastSeenMs = 0;
+    private long lastFrameNs = 0, lastSeenMs = 0;
 
     public Vision(HardwareMap hw) {
         tags = new AprilTagProcessor.Builder()
                 .setTagLibrary(AprilTagGameDatabase.getBioBuzzTagLibrary())
                 .setOutputUnits(DistanceUnit.INCH, AngleUnit.DEGREES)
                 .build();
-        tags.setDecimation(2);
+        tags.setDecimation(Config.DECIMATION);
 
         portal = new VisionPortal.Builder()
-                .setCamera(hw.get(WebcamName.class, "Webcam 1"))
+                .setCamera(hw.get(WebcamName.class, Config.CAMERA))
                 .addProcessor(tags)
                 .build();
     }
 
-    /** Лучшая видимая группа своего альянса или null, если давно не видно. */
+    /** Вызывать раз за цикл (делает Robot.update()). null — цели давно не видно. */
     public Target update(Robot.Alliance a) {
         String color = a == Robot.Alliance.RED ? "RED" : "BLUE";
         AprilTagClusterDetection best = null;
@@ -63,30 +61,36 @@ public class Vision {
             if (!(d instanceof AprilTagClusterDetection) || d.ftcPose == null) continue;
             AprilTagClusterDetection c = (AprilTagClusterDetection) d;
             if (c.metadata == null || !c.metadata.name.startsWith(color)) continue;
-
             double score = horizontal(c.ftcPose);
-            if (target == Preference.SCORING && !c.metadata.name.contains("SCORING")) score += 1000;
-            if (target == Preference.AUDIENCE && !c.metadata.name.contains("AUDIENCE")) score += 1000;
+            if (Config.TARGET == Preference.SCORING && !c.metadata.name.contains("SCORING")) score += 1000;
+            if (Config.TARGET == Preference.AUDIENCE && !c.metadata.name.contains("AUDIENCE")) score += 1000;
             if (score < bestScore) { bestScore = score; best = c; }
         }
 
-        long now = System.currentTimeMillis();
-        if (best != null) {
+        long nowMs = System.currentTimeMillis();
+        if (best != null && best.frameAcquisitionNanoTime != lastFrameNs) {
             double dist = horizontal(best.ftcPose), bear = best.ftcPose.bearing;
-            if (last != null && last.name.equals(best.metadata.name) && now - lastSeenMs < MAX_AGE_MS) {
-                dist = last.distance + SMOOTH * (dist - last.distance);
-                bear = last.bearing + SMOOTH * (bear - last.bearing);
+            boolean continuous = last != null && last.name.equals(best.metadata.name)
+                    && nowMs - lastSeenMs < Config.VISION_MAX_AGE_MS;
+            if (continuous) { // сглаживаем по кадрам, а не по циклам
+                dist = last.distance + Config.VISION_SMOOTH * (dist - last.distance);
+                bear = last.bearing + Config.VISION_SMOOTH * (bear - last.bearing);
             }
-            last = new Target(best.metadata.name, dist, bear, best.percentClusterFound);
-            lastSeenMs = now;
+            lastFrameNs = best.frameAcquisitionNanoTime;
+            lastSeenMs = nowMs;
+            last = new Target(best.metadata.name, dist, bear, best.percentClusterFound, lastFrameNs, true);
+            return last;
         }
-        return (last != null && now - lastSeenMs < MAX_AGE_MS) ? last : null;
+        if (last == null || nowMs - lastSeenMs > Config.VISION_MAX_AGE_MS) return null;
+        return last.stale();
     }
 
-    /** Горизонтальная дистанция: метки висят высоко (дно ячеек HIVE). */
+    /** Горизонтальная дистанция: метки висят высоко, на дне ячеек HIVE. */
     static double horizontal(AprilTagPoseFtc p) {
         return p.range * Math.cos(Math.toRadians(p.elevation));
     }
+
+    public double fps() { return portal.getFps(); }
 
     public void close() { portal.close(); }
 }
