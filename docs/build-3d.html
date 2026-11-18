@@ -1,0 +1,433 @@
+<title>BioBuzz Shooter 3D</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@500&display=swap">
+<style>
+/* Layout: full-bleed 3D workbench, instructions panel on the right (bottom sheet on phones) */
+:root {
+  --bg: #0d1117;
+  --panel: #151b24;
+  --line: #263142;
+  --fg: #e6ebf2;
+  --muted: #93a1b5;
+  --accent: #f5c518;   /* pollen yellow */
+  --new: #3ddc97;      /* new-part highlight */
+  --warn: #ff8a5c;
+  --display: "Chakra Petch", "Segoe UI", system-ui, sans-serif;
+  --body: "Inter", system-ui, -apple-system, sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, Menlo, monospace;
+  color-scheme: dark;
+}
+html, body { height: 100%; }
+body { background: var(--bg); color: var(--fg); font-family: var(--body); font-size: 15px; overflow: hidden; }
+.app { height: 100%; display: grid; grid-template-columns: 1fr minmax(340px, 420px); }
+.stage { position: relative; min-width: 0; }
+#c { display: block; width: 100%; height: 100%; touch-action: none; }
+.hud {
+  position: absolute; left: max(16px, env(safe-area-inset-left, 0px)); top: 14px;
+  display: flex; gap: 8px; flex-wrap: wrap; align-items: center; pointer-events: none;
+}
+.brand { font-family: var(--display); font-weight: 700; letter-spacing: .04em; font-size: 18px; }
+.brand b { color: var(--accent); }
+.chip { font-family: var(--mono); font-size: 12px; color: var(--muted); border: 1px solid var(--line); padding: 3px 8px; border-radius: 4px; background: color-mix(in srgb, var(--bg) 70%, transparent); }
+.hint { position: absolute; left: max(16px, env(safe-area-inset-left, 0px)); bottom: 14px; font-size: 12px; color: var(--muted); pointer-events: none; }
+.panel {
+  background: var(--panel); border-left: 1px solid var(--line);
+  display: flex; flex-direction: column; min-height: 0;
+  padding-right: max(0px, env(safe-area-inset-right, 0px));
+}
+.progress { height: 4px; background: var(--line); }
+.progress i { display: block; height: 100%; background: var(--accent); width: 0; transition: width .4s; }
+.scroll { overflow-y: auto; padding: 20px 22px; display: flex; flex-direction: column; gap: 16px; min-height: 0; flex: 1; }
+.eyebrow { font-family: var(--mono); font-size: 12px; color: var(--accent); letter-spacing: .08em; text-transform: uppercase; }
+h1 { font-family: var(--display); font-size: 26px; line-height: 1.15; margin: 4px 0 0; text-wrap: balance; }
+.lead { color: var(--muted); margin: 0; line-height: 1.5; }
+h2 { font-family: var(--display); font-size: 13px; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); margin: 0 0 8px; }
+ol, ul { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 6px; line-height: 1.5; }
+.parts { list-style: none; padding: 0; gap: 4px; }
+.parts li { display: flex; gap: 10px; font-size: 14px; }
+.parts .q { font-family: var(--mono); color: var(--accent); min-width: 2.2em; font-variant-numeric: tabular-nums; }
+.box { border: 1px solid var(--line); border-radius: 6px; padding: 12px 14px; line-height: 1.5; font-size: 14px; }
+.box.ok { border-color: color-mix(in srgb, var(--new) 45%, var(--line)); }
+.box.ok b { color: var(--new); }
+.box.warn { border-color: color-mix(in srgb, var(--warn) 45%, var(--line)); }
+.box.warn b { color: var(--warn); }
+.spec { font-family: var(--mono); font-size: 13px; color: var(--fg); background: var(--bg); padding: 1px 5px; border-radius: 3px; }
+.nav { border-top: 1px solid var(--line); padding: 12px 22px calc(12px + env(safe-area-inset-bottom, 0px)); display: flex; gap: 8px; align-items: center; }
+button { font: 600 14px var(--body); color: var(--fg); background: transparent; border: 1px solid var(--line); border-radius: 6px; padding: 9px 14px; cursor: pointer; }
+button:hover { border-color: var(--muted); }
+button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+button.primary { background: var(--accent); color: #14110a; border-color: var(--accent); }
+button:disabled { opacity: .4; cursor: default; }
+.grow { flex: 1; }
+.steps { display: flex; gap: 4px; flex-wrap: wrap; }
+.steps button { padding: 4px 0; width: 30px; font: 500 12px var(--mono); }
+.steps button[aria-current="step"] { border-color: var(--accent); color: var(--accent); }
+.steps button.done { color: var(--muted); }
+.note { font-size: 12px; color: var(--muted); line-height: 1.5; }
+@media (max-width: 820px) {
+  .app { grid-template-columns: 1fr; grid-template-rows: 44% 56%; }
+  .panel { border-left: 0; border-top: 1px solid var(--line); padding-right: 0; }
+  .scroll { padding: 16px max(16px, env(safe-area-inset-right, 0px)) 16px max(16px, env(safe-area-inset-left, 0px)); }
+  .nav { padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+  h1 { font-size: 22px; }
+}
+@media (prefers-reduced-motion: reduce) { .progress i { transition: none; } }
+</style>
+
+<div class="app">
+  <div class="stage">
+    <canvas id="c" aria-label="3D-модель робота"></canvas>
+    <div class="hud"><span class="brand">BIO<b>BUZZ</b> SHOOTER</span><span class="chip" id="stepChip">шаг 0 / 11</span><span class="chip">дюймы</span></div>
+    <div class="hint">Крутить — тянуть мышью/пальцем · Масштаб — колесо/щипок · Сдвиг — правая кнопка/два пальца</div>
+  </div>
+  <aside class="panel">
+    <div class="progress"><i id="bar"></i></div>
+    <div class="scroll" id="content" aria-live="polite"></div>
+    <div class="nav">
+      <button id="prev" aria-label="Предыдущий шаг">←</button>
+      <button id="play">▶ Авто</button>
+      <span class="grow"></span>
+      <button id="view">Вид</button>
+      <button id="next" class="primary">Дальше →</button>
+    </div>
+  </aside>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+<script>
+(function () {
+  "use strict";
+  const IN = 1; // 1 unit = 1 inch
+  const C = {
+    alu: 0xb9c2cf, alu2: 0x8d97a6, black: 0x23272e, motor: 0x2e3540, yellow: 0xf5c518,
+    wheel: 0x3a4250, roller: 0x15181d, poly: 0x9fd3ff, hub: 0xff6a3d, ehub: 0x2b6cff,
+    batt: 0x2a2f37, cam: 0x111317, pod: 0x6c7687, servo: 0x3b3f8f, green: 0x3ddc97
+  };
+
+  // ---------- scene ----------
+  const canvas = document.getElementById("c");
+  const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+  renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+  renderer.shadowMap.enabled = true;
+  const scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x0d1117);
+  const camera = new THREE.PerspectiveCamera(40, 1, 0.1, 500);
+  camera.position.set(26, 20, 30);
+  const controls = new THREE.OrbitControls(camera, canvas);
+  controls.enableDamping = true; controls.target.set(0, 5, 0);
+  controls.maxPolarAngle = Math.PI * 0.49; controls.minDistance = 10; controls.maxDistance = 90;
+
+  scene.add(new THREE.HemisphereLight(0xdfe8ff, 0x1a1f28, 0.8));
+  const sun = new THREE.DirectionalLight(0xffffff, 0.9);
+  sun.position.set(20, 40, 18); sun.castShadow = true;
+  sun.shadow.mapSize.set(1024, 1024);
+  Object.assign(sun.shadow.camera, { left: -25, right: 25, top: 25, bottom: -25 });
+  scene.add(sun);
+
+  // field tile floor (24" FTC tiles) + 18" sizing cube
+  const floor = new THREE.Mesh(new THREE.PlaneGeometry(96, 96), new THREE.MeshStandardMaterial({ color: 0x1b222d, roughness: 1 }));
+  floor.rotation.x = -Math.PI / 2; floor.receiveShadow = true; scene.add(floor);
+  const grid = new THREE.GridHelper(96, 4, 0x34404f, 0x34404f); grid.position.y = 0.01; scene.add(grid);
+  const cube = new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.BoxGeometry(18, 18, 18)),
+    new THREE.LineDashedMaterial({ color: 0xf5c518, dashSize: 0.6, gapSize: 0.4, transparent: true, opacity: 0.55 }));
+  cube.computeLineDistances(); cube.position.y = 9; cube.visible = false; scene.add(cube);
+
+  const mat = (c, o = {}) => new THREE.MeshStandardMaterial(Object.assign({ color: c, roughness: 0.55, metalness: 0.25 }, o));
+  function box(w, h, d, c, x, y, z, o) { const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat(c, o)); m.position.set(x, y, z); m.castShadow = m.receiveShadow = true; return m; }
+  function cyl(r, len, c, x, y, z, axis, o, seg = 28) {
+    const m = new THREE.Mesh(new THREE.CylinderGeometry(r, r, len, seg), mat(c, o));
+    if (axis === "x") m.rotation.z = Math.PI / 2; if (axis === "z") m.rotation.x = Math.PI / 2;
+    m.position.set(x, y, z); m.castShadow = true; return m;
+  }
+  function ball(r, c, x, y, z) { const m = new THREE.Mesh(new THREE.SphereGeometry(r, 24, 16), mat(c, { roughness: 0.4, metalness: 0 })); m.position.set(x, y, z); m.castShadow = true; return m; }
+
+  // ---------- parts, grouped by step ----------
+  const groups = [];
+  function group(build) { const g = new THREE.Group(); build(g); g.visible = false; scene.add(g); groups.push(g); return g; }
+  // robot coords: x = right, z = forward (+z is FRONT), y = up. Frame 14 x 14.
+  const FW = 14, FD = 14, RY = 2.6;
+
+  // 1 frame
+  group(g => {
+    g.add(box(1.5, 1.5, FD, C.alu, -FW / 2, RY, 0), box(1.5, 1.5, FD, C.alu, FW / 2, RY, 0));
+    g.add(box(FW - 1.5, 1.5, 1.5, C.alu, 0, RY, FD / 2 - 0.75), box(FW - 1.5, 1.5, 1.5, C.alu, 0, RY, -FD / 2 + 0.75));
+    g.add(box(FW - 1.5, 0.12, FD - 1.5, C.alu2, 0, RY - 0.65, 0, { metalness: 0.4 }));
+  });
+  // 2 drive motors + mecanum wheels
+  const wheels = [];
+  group(g => {
+    [[-1, 1], [1, 1], [-1, -1], [1, -1]].forEach(([sx, sz]) => {
+      const x = sx * (FW / 2 + 1.3), z = sz * (FD / 2 - 2.2);
+      g.add(cyl(0.95, 3.6, C.motor, sx * (FW / 2 - 2.4), RY, z, "x"));
+      const w = new THREE.Group(); w.position.set(x, 2.05, z);
+      const core = cyl(1.6, 1.5, C.wheel, 0, 0, 0, "x"); w.add(core);
+      // rollers at 45° — top view forms an X
+      const ang = (sx * sz > 0 ? 1 : -1) * Math.PI / 4;
+      for (let i = 0; i < 10; i++) {
+        const a = i / 10 * Math.PI * 2;
+        const rl = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.3, 1.5, 8), mat(C.roller, { roughness: 0.9 }));
+        const pivot = new THREE.Group(); pivot.rotation.x = a; rl.position.y = 1.8; rl.rotation.z = Math.PI / 2; rl.rotation.y = ang;
+        pivot.add(rl); w.add(pivot);
+      }
+      wheels.push(w); g.add(w);
+    });
+  });
+  // 3 odometry
+  group(g => {
+    g.add(box(1.6, 0.5, 1.6, C.black, 0, RY - 0.3, 0));
+    g.add(box(0.6, 0.5, 0.4, C.green, 0, RY + 0.05, 0, { emissive: 0x1d6b48 }));
+    g.add(box(1.2, 1.4, 2.6, C.pod, 3.2, 1.3, -1.5), cyl(0.7, 0.4, C.black, 3.2, 0.7, -1.5, "x"));   // Y-pod (rolls fwd/back)
+    g.add(box(2.6, 1.4, 1.2, C.pod, -1.5, 1.3, -3.6), cyl(0.7, 0.4, C.black, -1.5, 0.7, -3.6, "z"));  // X-pod (rolls sideways)
+  });
+  // 4 intake (front)
+  const intakeShaft = new THREE.Group();
+  group(g => {
+    g.add(box(1, 4.5, 1.2, C.alu, -FW / 2 + 0.5, 4.2, FD / 2 + 0.2), box(1, 4.5, 1.2, C.alu, FW / 2 - 0.5, 4.2, FD / 2 + 0.2));
+    intakeShaft.position.set(0, 3, FD / 2 + 1.2);
+    intakeShaft.add(cyl(0.2, FW - 1, C.alu2, 0, 0, 0, "x"));
+    for (let i = -2; i <= 2; i++) for (let k = 0; k < 4; k++) {
+      const f = box(0.25, 2.2, 0.5, 0x2b8a6e, i * 2.6, 0, 0); f.geometry.translate(0, 1, 0);
+      const p = new THREE.Group(); p.rotation.x = k * Math.PI / 2 + i; p.position.x = 0; p.add(f); intakeShaft.add(p);
+    }
+    g.add(intakeShaft);
+    g.add(cyl(0.95, 3.4, C.motor, FW / 2 - 2.2, 4.6, FD / 2 - 1.2, "x"));
+  });
+  // 5 hopper: ramp for exactly 4 balls (single file, sloping to the back)
+  const hopperBalls = [];
+  group(g => {
+    const ramp = box(3.4, 0.15, 12, C.poly, 0, 0, 0, { transparent: true, opacity: 0.55, metalness: 0 });
+    const rg = new THREE.Group(); rg.add(ramp);
+    rg.add(box(0.15, 2.4, 12, C.poly, -1.8, 1.2, 0, { transparent: true, opacity: 0.35, metalness: 0 }));
+    rg.add(box(0.15, 2.4, 12, C.poly, 1.8, 1.2, 0, { transparent: true, opacity: 0.35, metalness: 0 }));
+    rg.position.set(0, 5.1, 0.2); rg.rotation.x = -0.21; g.add(rg);
+    for (let i = 0; i < 4; i++) { const b = ball(1.4, C.yellow, 0, 0, 0); hopperBalls.push(b); g.add(b); }
+    g.add(box(1.2, 0.6, 0.9, 0x1f6feb, 2.3, 4.6, -4.8), box(1.2, 0.6, 0.9, 0x1f6feb, 2.3, 6.6, 4.2)); // loaded / full sensors
+  });
+  // 6 shooter: tower + flywheel + 2 motors (rear, -z)
+  const flywheel = new THREE.Group();
+  const SZ = -FD / 2 + 1.5, SY = 9.2;
+  group(g => {
+    g.add(box(1.2, 10, 1.5, C.alu, -4, 7.6, SZ), box(1.2, 10, 1.5, C.alu, 4, 7.6, SZ));
+    g.add(box(9.2, 1.2, 1.5, C.alu, 0, 12.4, SZ));
+    flywheel.position.set(0, SY, SZ);
+    flywheel.add(cyl(0.2, 9, C.alu2, 0, 0, 0, "x"));
+    const fw = cyl(1.9, 2.4, 0x3d4452, 0, 0, 0, "x", { roughness: 0.8 }); flywheel.add(fw);
+    for (let k = 0; k < 6; k++) { const s = box(2.5, 0.3, 0.5, 0x7a8597, 0, 1.75, 0); const p = new THREE.Group(); p.rotation.x = k * Math.PI / 3; p.add(s); flywheel.add(p); }
+    g.add(flywheel);
+    g.add(cyl(0.95, 3.6, C.motor, -6.3, SY, SZ, "x"), cyl(0.95, 3.6, C.motor, 6.3, SY, SZ, "x"));
+  });
+  // 7 hood + kicker
+  const kicker = new THREE.Group();
+  group(g => {
+    const hoodGeo = new THREE.CylinderGeometry(4.3, 4.3, 3.6, 32, 1, true, -0.25, 1.9);
+    const hood = new THREE.Mesh(hoodGeo, mat(C.poly, { side: THREE.DoubleSide, transparent: true, opacity: 0.6, metalness: 0 }));
+    hood.rotation.z = Math.PI / 2; hood.position.set(0, SY, SZ); g.add(hood);
+    g.add(box(1.4, 0.8, 1.1, C.servo, -2.8, SY + 3.6, SZ + 1.2));
+    kicker.position.set(0, 4.6, SZ + 3.4);
+    kicker.add(box(0.5, 0.4, 3, C.black, 0, 0, -0.6));
+    g.add(kicker, box(1.4, 1.1, 0.8, C.servo, 1.6, 4.6, SZ + 3.4));
+  });
+  // 8 camera
+  group(g => {
+    g.add(box(1, 2.6, 0.5, C.alu, 0, 13.6, SZ + 0.2));
+    const camG = new THREE.Group(); camG.position.set(0, 15, SZ + 0.6); camG.rotation.x = -0.35;
+    camG.add(box(3.6, 1.3, 1.1, C.cam), cyl(0.45, 0.4, 0x2c5cff, 0, 0, 0.7, "z", { emissive: 0x0f2a80 }));
+    g.add(camG);
+  });
+  // 9 electronics
+  group(g => {
+    g.add(box(4.2, 0.9, 5.6, C.hub, -3.8, RY + 1.1, -2.2, { metalness: 0.1 }));
+    g.add(box(4.2, 0.9, 5.6, C.ehub, 3.8, RY + 1.1, -2.2, { metalness: 0.1 }));
+    g.add(box(6, 1.6, 3, C.batt, 0, RY + 0.4, 4.4));
+    g.add(box(1.4, 1.4, 0.6, 0xd7263d, FW / 2 - 0.2, RY + 1.6, 4.6, { emissive: 0x5a0d16 }));
+    const pts = [[-3.8, 3.8, 0.6], [-1, 5, 2.5], [0, 3.4, 4.4]].map(p => new THREE.Vector3(...p));
+    g.add(new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), 20, 0.12, 6), mat(0xd7263d)));
+    const pts2 = [[3.8, 3.8, 0.6], [1, 5, 2.6], [0.8, 3.4, 4.4]].map(p => new THREE.Vector3(...p));
+    g.add(new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts2), 20, 0.12, 6), mat(0x222222)));
+  });
+
+  // HIVE target (simplified) shown in the final step
+  const hive = new THREE.Group();
+  hive.add(box(20, 14, 1, 0x3a2f12, 0, 44, -60, { transparent: true, opacity: 0.85 }));
+  hive.add(box(12, 1.2, 1.2, C.yellow, 0, 37, -59.4, { emissive: 0x3a2c00 }));
+  hive.visible = false; scene.add(hive);
+  const shot = ball(1.4, C.yellow, 0, SY, SZ); shot.visible = false; scene.add(shot);
+
+  // ---------- steps ----------
+  const S = [
+    { t: "Что строим", eye: "Обзор", cam: [26, 20, 30], tgt: [0, 6, 0], show: 9, cube: true,
+      lead: "Робот-стрелок: mecanum-шасси, интейк спереди, бункер на 4 шара, маховик сзади, камера сверху. Ниже 10 шагов сборки от пустого стола до готового робота.",
+      parts: [], body: ["Шары идут так: интейк → рампа бункера → толкатель → маховик → ячейка HIVE.", "Жёлтый пунктир — куб 18 × 18 × 18\": стартовый размер по R102.", "Зелёным подсвечиваются детали, которые добавляются на текущем шаге."],
+      warn: "Модель — типовая конструкция, под которую написан код, а не ваша CAD-модель. Если ваш робот другой, сверяйтесь с вашей моделью." },
+    { t: "Рама шасси", eye: "Шаг 1", cam: [18, 16, 20], tgt: [0, 2, 0], show: 1,
+      lead: "Квадратная рама из U-каналов — основа всего робота.",
+      parts: [["4", "U-канал goBILDA 1120 (2 × 336 мм, 2 × 288 мм)"], ["1", "Пластина-основание"], ["—", "Винты M4 и контргайки"]],
+      body: ["Соберите прямоугольник ≈ 14 × 14\" по внешнему краю.", "Проверьте угольником, что все углы ровно 90°.", "Прикрутите пластину-основание снизу, на ней будет электроника."],
+      ok: "Рама не «гуляет», если надавить на угол по диагонали." },
+    { t: "Моторы и колёса mecanum", eye: "Шаг 2", cam: [0, 26, 0.01], tgt: [0, 0, 0], show: 2,
+      lead: "4 мотора 312 rpm по углам. Колёса ставятся так, чтобы ролики сверху образовали X.",
+      parts: [["4", "Мотор Yellow Jacket 312 rpm"], ["4", "Колесо mecanum 104 мм (2 левых, 2 правых)"], ["4", "Ступица под вал 8 мм REX"]],
+      body: ["Моторы — внутрь рамы, валы наружу.", "Посмотрите сверху (камера сейчас сверху): ролики четырёх колёс образуют X.", "Затяните ступицы, колёса не должны тереться о раму."],
+      ok: "Робот стоит ровно на 4 колёсах и не качается. Ширина с колёсами ≤ 18\".", warn: "Ролики не «крестом» — робот не поедет вбок. Это самая частая ошибка." },
+    { t: "Одометрия Pinpoint", eye: "Шаг 3", cam: [4, -0.01 + 10, 14], tgt: [0, 1, -1], show: 3, low: true,
+      lead: "Две пассивные колёсные ноги и компьютер Pinpoint — точное положение робота на поле.",
+      parts: [["1", "goBILDA Pinpoint"], ["2", "Odometry Pod (4-Bar или Swingarm)"]],
+      body: ["Продольная нога катится вперёд-назад, боковая — влево-вправо.", "Пружины прижимают колёсики к полу.", "Pinpoint — ровно, ближе к центру, светодиодом вверх.", "Измерьте смещения ног от центра в мм и впишите в Config: <span class=\"spec\">PINPOINT_X_OFFSET_MM</span>, <span class=\"spec\">PINPOINT_Y_OFFSET_MM</span>."],
+      ok: "Ноги касаются пола, но робот не висит на них.", note: "Шаг можно пропустить: без Pinpoint код считает положение по колёсам, но точность ниже." },
+    { t: "Интейк", eye: "Шаг 4", cam: [16, 9, 22], tgt: [0, 3, 7], show: 4,
+      lead: "Вал с гибкими лопатками спереди затягивает шары на рампу.",
+      parts: [["1", "Мотор Yellow Jacket 1150 или 435 rpm"], ["1", "Вал 8 мм REX ~380 мм + 2 подшипника"], ["8+", "Гибкие лопатки или силиконовые колёса Ø 60–72 мм"]],
+      body: ["Центр вала ≈ 2.5–3\" от пола: лопатки должны цеплять шар POLLEN (2.8\").", "Мотор — сбоку, напрямую или через ремень.", "Интейк в стартовом положении не выходит за 18\"."],
+      ok: "Шар, поднесённый рукой, затягивается и уходит на рампу." },
+    { t: "Бункер ровно на 4 шара", eye: "Шаг 5", cam: [17, 14, 10], tgt: [0, 5, 0], show: 5,
+      lead: "Рампа под один ряд шаров с уклоном к маховику. Пятый шар физически не помещается — так вы не получите фол G407.",
+      parts: [["1", "Рампа из поликарбоната 2–3 мм"], ["2", "Боковые стенки"], ["2", "REV Color Sensor V3 (по желанию)"]],
+      body: ["Ширина между стенками ≈ 3–3.2\": шары идут гуськом.", "Длина — ровно на 4 шара.", "Уклон 10–15° к задней части: шары сами катятся к толкателю.", "Синие датчики: <span class=\"spec\">loadedSensor</span> у толкателя и <span class=\"spec\">fullSensor</span> на месте 4-го шара."],
+      ok: "Из 5 шаров перед интейком внутрь попадают только 4.", warn: "G407: больше 4 элементов одновременно держать нельзя." },
+    { t: "Маховик", eye: "Шаг 6", cam: [-24, 19, -24], tgt: [0, 7, -3], show: 6, spin: true,
+      lead: "Два мотора 6000 rpm крутят маховик и выстреливают шар вверх-вперёд.",
+      parts: [["2", "Мотор Yellow Jacket 6000 rpm (1:1)"], ["1", "Колесо-маховик Ø 96 мм"], ["1", "Вал 8 мм + 2 подшипника"], ["—", "U-каналы для стойки"]],
+      body: ["Стойка стрелка должна быть жёсткой: любой люфт даёт разброс выстрелов.", "Вал на двух подшипниках, маховик по центру.", "Моторы с двух сторон крутятся навстречу, в коде один уже стоит <span class=\"spec\">REVERSE</span>."],
+      ok: "Маховик, раскрученный рукой, крутится долго и без биения.", warn: "6000 rpm опасны. Закройте маховик кожухом и держите руки подальше." },
+    { t: "Капюшон и толкатель", eye: "Шаг 7", cam: [20, 16, -24], tgt: [0, 7, -4], show: 7, kick: true,
+      lead: "Капюшон на серво задаёт угол вылета, толкатель подаёт один шар в маховик.",
+      parts: [["2", "Серво goBILDA (капюшон и толкатель)"], ["1", "Гнутая пластина капюшона"], ["1", "Рычаг толкателя"]],
+      body: ["Зазор маховик–капюшон ≈ 2.3–2.5\": шар сжимается на 0.3–0.5\".", "<span class=\"spec\">KICK_REST</span> — рычаг внизу, шар не касается маховика.", "<span class=\"spec\">KICK_FIRE</span> — рычаг вверху, шар вдавлен в маховик.", "За один толчок уходит ровно один шар."],
+      ok: "Поднимите рычаг рукой: шар входит в маховик; опустите — следующий скатывается на место." },
+    { t: "Камера", eye: "Шаг 8", cam: [10, 20, 10], tgt: [0, 13, -5], show: 8,
+      lead: "Вебкамера над маховиком смотрит вперёд и чуть вверх — на метки AprilTag под ячейками HIVE.",
+      parts: [["1", "USB-вебкамера (Logitech C270 / C920)"], ["1", "Жёсткий кронштейн"]],
+      body: ["Только жёсткое крепление: если камера дрожит, дрожит и прицел.", "Камера по оси вылета шара. Если смещена — <span class=\"spec\">AIM_OFFSET_DEG</span>.", "Наклон такой, чтобы с 30–100\" HIVE была в центре кадра.", "USB — в Control Hub, кабель под стяжки."],
+      ok: "В init в телеметрии строка «Цель» показывает RED … / BLUE … и дистанцию." },
+    { t: "Электроника и провода", eye: "Шаг 9", cam: [12, 18, 14], tgt: [0, 3, 0], show: 9, hideTop: true,
+      lead: "Control Hub, Expansion Hub, аккумулятор и выключатель — низко внутри рамы.",
+      parts: [["1", "REV Control Hub (оранжевый)"], ["1", "REV Expansion Hub (синий) + кабель RS485"], ["1", "Аккумулятор 12 В + выключатель REV (красный)"]],
+      body: ["Control Hub: Motor 0–3 → <span class=\"spec\">fl bl fr br</span>; Servo 0/1 → <span class=\"spec\">hood kicker</span>; I2C → <span class=\"spec\">pinpoint</span> и датчики.", "Expansion Hub: Motor 0/1 → <span class=\"spec\">shooterL shooterR</span>; Motor 2 → <span class=\"spec\">intake</span>.", "Кабель энкодера каждого мотора — в порт с тем же номером.", "Выключатель — на виду, чтобы судьи могли быстро выключить робота."],
+      ok: "Ни один провод не болтается рядом с колёсами и маховиком." },
+    { t: "Готово: первый выстрел", eye: "Шаг 10", cam: [30, 22, 26], tgt: [0, 14, -18], show: 9, final: true, cube: true,
+      lead: "Робот собран. Осталось настроить Driver Hub и откалибровать выстрел.",
+      parts: [],
+      body: ["Driver Hub → Configure Robot: имена устройств как на шаге 9 (регистр важен).", "Запустите TeleOp и проверьте направление колёс и маховика.", "OpMode Shooter Tuner: заполните таблицу выстрела на 6–7 дистанциях.", "Промерьте точки автономки на своём поле.", "Финальный тест: 10 выстрелов с RB из разных мест, цель 9–10 попаданий."],
+      ok: "Робот помещается в куб 18\" и стреляет в HIVE.", note: "Подробные чек-листы — в README.md и BUILD_GUIDE.md в репозитории." }
+  ];
+
+  // ---------- UI ----------
+  const content = document.getElementById("content");
+  const bar = document.getElementById("bar"), chip = document.getElementById("stepChip");
+  const prevB = document.getElementById("prev"), nextB = document.getElementById("next"), playB = document.getElementById("play");
+  let cur = 0, auto = null;
+  const appear = new Map(); // group -> start time
+  const camFrom = new THREE.Vector3(), camTo = new THREE.Vector3(), tFrom = new THREE.Vector3(), tTo = new THREE.Vector3();
+  let camT = 1;
+
+  function render(i) {
+    const s = S[i];
+    const parts = s.parts.length ? `<div><h2>Детали</h2><ul class="parts">${s.parts.map(p => `<li><span class="q">${p[0]}</span><span>${p[1]}</span></li>`).join("")}</ul></div>` : "";
+    content.innerHTML = `
+      <div><div class="eyebrow">${s.eye}</div><h1>${s.t}</h1></div>
+      <p class="lead">${s.lead}</p>
+      ${parts}
+      <div><h2>${i === 0 ? "Как читать" : "Как собрать"}</h2><ol>${s.body.map(b => `<li>${b}</li>`).join("")}</ol></div>
+      ${s.ok ? `<div class="box ok"><b>Проверка.</b> ${s.ok}</div>` : ""}
+      ${s.warn ? `<div class="box warn"><b>Внимание.</b> ${s.warn}</div>` : ""}
+      ${s.note ? `<p class="note">${s.note}</p>` : ""}
+      <div><h2>Шаги</h2><div class="steps">${S.map((_, k) => `<button data-k="${k}" ${k === i ? 'aria-current="step"' : ""} class="${k < i ? "done" : ""}">${k}</button>`).join("")}</div></div>`;
+    content.scrollTop = 0;
+    content.querySelectorAll(".steps button").forEach(b => b.onclick = () => go(+b.dataset.k));
+  }
+
+  function go(i) {
+    i = Math.max(0, Math.min(S.length - 1, i));
+    const prevShow = S[cur].show; cur = i; const s = S[i];
+    groups.forEach((g, k) => {
+      const vis = k < s.show;
+      if (vis && !g.visible) { g.visible = true; appear.set(g, performance.now()); }
+      else if (!vis) { g.visible = false; appear.delete(g); }
+      g.userData.isNew = (i > 0 && k === s.show - 1 && !s.final && i !== 0);
+      g.userData.dim = !!(s.hideTop && k >= 5 && k <= 7);
+    });
+    if (s.show < prevShow) appear.clear();
+    cube.visible = !!s.cube; hive.visible = !!s.final;
+    camFrom.copy(camera.position); camTo.set(...s.cam); tFrom.copy(controls.target); tTo.set(...s.tgt); camT = 0;
+    render(i);
+    bar.style.width = (i / (S.length - 1) * 100) + "%";
+    chip.textContent = `шаг ${i} / ${S.length - 1}`;
+    prevB.disabled = i === 0;
+    nextB.textContent = i === S.length - 1 ? "Сначала ↺" : "Дальше →";
+  }
+  prevB.onclick = () => { stopAuto(); go(cur - 1); };
+  nextB.onclick = () => { stopAuto(); go(cur === S.length - 1 ? 0 : cur + 1); };
+  document.getElementById("view").onclick = () => { const s = S[cur]; camFrom.copy(camera.position); camTo.set(...s.cam); tFrom.copy(controls.target); tTo.set(...s.tgt); camT = 0; };
+  function stopAuto() { if (auto) { clearInterval(auto); auto = null; playB.textContent = "▶ Авто"; } }
+  playB.onclick = () => {
+    if (auto) return stopAuto();
+    playB.textContent = "❚❚ Пауза";
+    if (cur === S.length - 1) go(0);
+    auto = setInterval(() => { if (cur >= S.length - 1) stopAuto(); else go(cur + 1); }, 6500);
+  };
+  addEventListener("keydown", e => { if (e.key === "ArrowRight") nextB.click(); if (e.key === "ArrowLeft") prevB.click(); });
+
+  // ---------- materials state ----------
+  function setGroupLook(g, now) {
+    const t0 = appear.get(g);
+    let k = 1;
+    if (t0 !== undefined) { k = Math.min(1, (now - t0) / 700); if (k >= 1) appear.delete(g); }
+    const e = 1 - Math.pow(1 - k, 3);
+    g.position.y = (1 - e) * 10;
+    g.traverse(o => {
+      if (!o.isMesh) return;
+      if (o.userData.base === undefined) { o.userData.base = o.material.emissive ? o.material.emissive.getHex() : 0; o.userData.op = o.material.opacity; o.userData.tr = o.material.transparent; }
+      if (g.userData.isNew) o.material.emissive.setHex(0x0f5a3a);
+      else o.material.emissive.setHex(o.userData.base);
+      const dim = g.userData.dim;
+      o.material.transparent = dim || o.userData.tr;
+      o.material.opacity = dim ? 0.12 : o.userData.op;
+    });
+  }
+
+  // ---------- loop ----------
+  const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
+  function resize() {
+    const w = canvas.clientWidth, h = canvas.clientHeight;
+    if (canvas.width !== Math.floor(w * renderer.getPixelRatio()) || canvas.height !== Math.floor(h * renderer.getPixelRatio())) {
+      renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix();
+    }
+  }
+  const clock = new THREE.Clock(); let shotT = 0;
+  function tick(now) {
+    resize();
+    const dt = Math.min(clock.getDelta(), 0.05);
+    const s = S[cur];
+    if (camT < 1) {
+      camT = reduce ? 1 : Math.min(1, camT + dt / 1.1);
+      const e = camT < 0.5 ? 4 * camT ** 3 : 1 - Math.pow(-2 * camT + 2, 3) / 2;
+      camera.position.lerpVectors(camFrom, camTo, e); controls.target.lerpVectors(tFrom, tTo, e);
+    }
+    groups.forEach(g => g.visible && setGroupLook(g, now));
+
+    // hopper balls rest on the sloped ramp
+    hopperBalls.forEach((b, i) => { const z = -4.2 + i * 2.9; b.position.set(0, 5.1 + 1.45 + (z - 0.2) * Math.tan(0.21), z); });
+    if (!reduce) {
+      wheels.forEach(w => w.rotation.x += dt * 1.2);
+      intakeShaft.rotation.x += dt * 4;
+      flywheel.rotation.x -= dt * ((s.spin || s.final || cur >= 6) ? 22 : 0);
+      kicker.rotation.x = (s.kick || s.final) ? -Math.max(0, Math.sin(now / 350)) * 0.5 : 0;
+    }
+    // final: launch a ball along a parabola into the HIVE
+    shot.visible = !!s.final && !reduce;
+    if (shot.visible) {
+      shotT = (shotT + dt / 1.6) % 1;
+      const p0 = new THREE.Vector3(0, SY + 2, SZ - 1), p1 = new THREE.Vector3(0, 38, -59.4);
+      shot.position.lerpVectors(p0, p1, shotT);
+      shot.position.y += Math.sin(shotT * Math.PI) * 14;
+    }
+    controls.update();
+    renderer.render(scene, camera);
+    requestAnimationFrame(tick);
+  }
+  go(0);
+  requestAnimationFrame(tick);
+})();
+</script>
